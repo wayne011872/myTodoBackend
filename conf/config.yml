@@ -1,0 +1,15 @@
+sql:
+    uri: postgres://{User}:{Pwd}@localhost:5432
+    user: postgres
+    pass: FaHsiang880915
+    defaul: sideProject
+    sslmode: disable
+
+redis:
+    host: redis:6379
+    pass: ""
+    db: 0
+
+log:
+    level: debug
+    target: os

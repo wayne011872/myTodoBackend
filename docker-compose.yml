@@ -1,0 +1,23 @@
+version: '3'
+services:
+    redis:
+      image: redis:latest
+      ports:
+        - 6379:6379
+      networks:
+        - backend
+    mongo:
+      image: mongo:5.0
+      ports:
+      - 27017:27017
+      networks:
+        - backend
+    es:
+      image: 94peter/es-analysis-ik:7.17.7.amd64
+      environment:
+      - discovery.type=single-node
+      ports:
+      - 9200:9200
+      - 9300:9300
+      networks:
+        - backend

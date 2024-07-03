@@ -1,0 +1,46 @@
+# 指定 pipeline，且由 docker runner 執行
+kind: pipeline
+type: exec
+name: deploy_service
+
+platform:
+  os: linux
+  arch: amd64
+
+# for build code 使用，clone 時抓 depth = 1 即可，加快速度
+clone:
+  depth: 1
+
+# 這邊開始定義 pipeline 的每個步驟
+steps:
+  - name: teardown-existing-services
+    commands:
+      - cd /home/numax/TPS_Version2/devop
+      - docker-compose down supplier-api-svc
+      - docker-compose rm -f supplier-api-svc
+      - docker rmi -f supplier:dev
+    when:
+      branch:
+        - develop
+
+  - name: run-make-command
+    commands:
+      - cd /home/numax/TPS_Version2/supplier
+      - make build-docker-img
+    when:
+      branch:
+      - develop
+
+  - name: setup-services
+    commands:
+      - cd /home/numax/TPS_Version2/devop
+      - docker-compose up -d supplier-api-svc
+    when:
+      branch:
+        - develop
+trigger:
+  branch:
+  - develop
+  event:
+  - push
+  - pull_request

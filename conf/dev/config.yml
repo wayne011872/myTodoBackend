@@ -1,0 +1,13 @@
+mongo:
+    uri: mongodb://dev:dev@192.168.20.236:27027
+    # uri: mongodb://192.168.1.238:27017
+    defaul: v5-dev
+
+redis:
+    host: 127.0.0.1:6379
+    pass: ""
+    db: 0
+
+log:
+    level: debug
+    target: os
