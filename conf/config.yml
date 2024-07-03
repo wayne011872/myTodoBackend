@@ -1,4 +1,4 @@
-sql:
+postgres:
     uri: postgres://{User}:{Pwd}@localhost:5432
     user: postgres
     pass: FaHsiang880915

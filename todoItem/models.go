@@ -5,17 +5,16 @@
 package todoItem
 
 import (
-	"database/sql"
-	"time"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Todoitem struct {
 	ID          int64
 	Title       string
-	Detail      sql.NullString
+	Detail      pgtype.Text
 	Completed   bool
-	Starttime   time.Time
-	Endtime     time.Time
-	Createdtime sql.NullTime
-	Updatedtime sql.NullTime
+	Starttime   pgtype.Timestamp
+	Endtime     pgtype.Timestamp
+	Createdtime pgtype.Timestamp
+	Updatedtime pgtype.Timestamp
 }

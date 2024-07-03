@@ -7,3 +7,4 @@ sql:
       go:
         package: "todoItem"
         out: "./todoItem"
+        sql_package: "pgx/v5"

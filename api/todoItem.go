@@ -1,11 +1,10 @@
 package api
 
 import (
-	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
-
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/gin-gonic/gin"
 	"github.com/wayne011872/goSterna/api"
 	apiErr "github.com/wayne011872/goSterna/api/err"
@@ -39,8 +38,10 @@ func (a *TodoItemAPI) GetAPIs() []*api.GinApiHandler {
 
 func(a *TodoItemAPI) getEndpoint(c *gin.Context) {
 	logger := log.GetLogByGin(c)
-	sqlClient := db.GetSqlDBClientByGin(c)
-	queries := todoItem.New(sqlClient.GetDB())
+	pgxClient := db.GetPgxClientByGin(c)
+	conn := pgxClient.AcquireConnection(c)
+	defer conn.Release()
+	queries := todoItem.New(conn)
 	saveLog := fmt.Sprintf("[%s] Get System Info to DB\n",time.Now().Format("2006-01-02 15:04:05"))
 	logger.Info(saveLog)
 	items, err := queries.GetAllTodoItem(c)
@@ -52,6 +53,7 @@ func(a *TodoItemAPI) getEndpoint(c *gin.Context) {
 	for _, item := range items {
 		itemsDao = append(itemsDao, ConvertSQLCTodoItem(item))
 	}
+	fmt.Println("listOK")
 	c.JSON(http.StatusOK, map[string]any{
 		"result": itemsDao,
 	})
@@ -66,24 +68,31 @@ func(a *TodoItemAPI) postEndpoint(c *gin.Context) {
 		return
 	}
 	logger := log.GetLogByGin(c)
-	sqlClient := db.GetSqlDBClientByGin(c)
-	queries := todoItem.New(sqlClient.GetDB())
+	pgxClient := db.GetPgxClientByGin(c)
+	queries := todoItem.New(pgxClient.AcquireConnection(c))
 	saveLog := fmt.Sprintf("[%s] Save System Info to DB\n",time.Now().Format("2006-01-02 15:04:05"))
 	logger.Info(saveLog)
 	err = queries.InsertTodoItem(c,todoItem.InsertTodoItemParams{
 		Title: in.Title,
-		Detail: sql.NullString{
+		Detail: pgtype.Text{
 			String: in.Detail,
 			Valid:  in.Detail != "",
 		},
 		Completed: in.Completed,
-		Starttime: time.Now(),
-		Endtime: time.Now().Add(24 * time.Hour),
+		Starttime: pgtype.Timestamp{
+			Time: time.Now(),
+			Valid: true,
+		},
+		Endtime: pgtype.Timestamp{
+			Time: time.Now().Add(time.Hour * 24),
+			Valid: true,
+		},
 	})
 	if err != nil {
 		a.GinOutputErr(c, err)
 		return
 	}
+	fmt.Println("save ok")
 	c.JSON(http.StatusOK, map[string]any{
 		"result": "ok",
 	})
@@ -113,8 +122,8 @@ func ConvertSQLCTodoItem(sqlcItem todoItem.Todoitem) dao.TodoItem {
 		Title:       sqlcItem.Title,
 		Detail:      detail,   // Use String field of sql.NullString
 		Completed:   sqlcItem.Completed,
-		StartTime:   sqlcItem.Starttime,
-		EndTime:     sqlcItem.Endtime,
+		StartTime:   sqlcItem.Starttime.Time,
+		EndTime:     sqlcItem.Endtime.Time,
 		CreateTime:  createTime, // Use Time field of sql.NullTime
 		UpdateTime:  updateTime, // Use Time field of sql.NullTime
 	}

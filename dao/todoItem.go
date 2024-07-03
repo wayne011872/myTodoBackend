@@ -4,8 +4,8 @@ import(
 	"time"
 )
 type TodoItem struct {
-	ID          int64  
-	Title       string 
+	ID          int64
+	Title       string
 	Detail      string 
 	Completed   bool 
 	StartTime   time.Time

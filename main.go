@@ -45,7 +45,7 @@ func runAPI() {
 	log.Println("run api port: ", port)
 	log.Fatal(api.NewGinApiServer(ginMode).Middles(
 		mid.NewGinDevDiMid(storage.NewHdStorage(confPath), di, serviceName),
-		mid.NewGinSqlDBMid(serviceName),
+		mid.NewGinPgxMid(serviceName),
 	).AddAPIs(
 		myapi.NewTodoItemAPI(serviceName),
 	).Run(port).Error())
@@ -53,12 +53,12 @@ func runAPI() {
 
 
 type di struct {
-	*db.SqlConf         	`yaml:"sql,omitempty"`
+	*db.PgxConf         	`yaml:"postgres,omitempty"`
 	*sternaLog.LoggerConf 	`yaml:"log,omitempty"`
 }
 
 func (d *di) IsEmpty() bool {
-	if d.SqlConf == nil {
+	if d.PgxConf == nil {
 		return true
 	}
 
