@@ -4,49 +4,50 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/gin-gonic/gin"
-	"github.com/wayne011872/goSterna/api"
-	apiErr "github.com/wayne011872/goSterna/api/err"
-	"github.com/wayne011872/goSterna/db"
-	"github.com/wayne011872/goSterna/log"
-	"github.com/wayne011872/myTodoBackend/input"
-	"github.com/wayne011872/myTodoBackend/todoItem"
+	"github.com/jackc/pgx/v5/pgtype"
+	apitool "github.com/wayne011872/api-toolkit"
+	"github.com/wayne011872/api-toolkit/auth"
+	apiErr "github.com/wayne011872/api-toolkit/errors"
+	"github.com/wayne011872/microservice/cfg"
 	"github.com/wayne011872/myTodoBackend/dao"
+	"github.com/wayne011872/myTodoBackend/input"
+	"github.com/wayne011872/myTodoBackend/model"
+	"github.com/wayne011872/myTodoBackend/todoItem"
+	"github.com/wayne011872/wayneLib/auth/perm"
 )
 
-func NewTodoItemAPI(service string) api.GinAPI {
-	return &TodoItemAPI{
-		ErrorOutputAPI: api.NewErrorOutputAPI(service),
-	}
+func NewTodoItemAPI() apitool.GinAPI {
+	return &TodoItemAPI{}
 }
 
 type TodoItemAPI struct {
-	api.ErrorOutputAPI
+	apiErr.CommonApiErrorHandler
 }
 
-func (a *TodoItemAPI) GetName() string{
-	return "todoItem"
-}
-
-func (a *TodoItemAPI) GetAPIs() []*api.GinApiHandler {
-	return [] *api.GinApiHandler{
-		{Path: "/v1/todoItem",Handler: a.getEndpoint,Method: "GET"},
-		{Path: "/v1/todoItem",Handler: a.postEndpoint,Method: "POST"},
+func (a *TodoItemAPI) GetAPIs() []*apitool.GinApiHandler {
+	return [] *apitool.GinApiHandler{
+		{Path: "/v1/todoItem",Handler: a.getEndpoint,Method: "GET", Auth: true, Group: []auth.ApiPerm{perm.Admin, perm.Editor}},
+		{Path: "/v1/todoItem",Handler: a.postEndpoint,Method: "POST", Auth: true, Group: []auth.ApiPerm{perm.Admin, perm.Editor}},
 	}
 }
 
-func(a *TodoItemAPI) getEndpoint(c *gin.Context) {
-	logger := log.GetLogByGin(c)
-	pgxClient := db.GetPgxClientByGin(c)
-	conn := pgxClient.AcquireConnection(c)
-	defer conn.Release()
-	queries := todoItem.New(conn)
-	saveLog := fmt.Sprintf("[%s] Get System Info to DB\n",time.Now().Format("2006-01-02 15:04:05"))
-	logger.Info(saveLog)
-	items, err := queries.GetAllTodoItem(c)
+func(a *TodoItemAPI) getEndpoint(s *gin.Context) {
+	cfg,ok := cfg.GetFromGinCtx[*model.Config](s)
+	if !ok {
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+	conn,err := cfg.NewPgxConn(s)
+	if err != nil{
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+
+	defer conn.Close()
+	queries := todoItem.New(conn.GetPgxConn())
+	items, err := queries.GetAllTodoItem(s)
 	if err != nil {
-		a.GinOutputErr(c, err)
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, err.Error()))
 		return
 	}
 	itemsDao := []dao.TodoItem{}
@@ -54,25 +55,30 @@ func(a *TodoItemAPI) getEndpoint(c *gin.Context) {
 		itemsDao = append(itemsDao, ConvertSQLCTodoItem(item))
 	}
 	fmt.Println("listOK")
-	c.JSON(http.StatusOK, map[string]any{
+	s.JSON(http.StatusOK, map[string]any{
 		"result": itemsDao,
 	})
 }
 
-func(a *TodoItemAPI) postEndpoint(c *gin.Context) {
+func(a *TodoItemAPI) postEndpoint(s *gin.Context) {
 	in := &input.TodoItemInput{}
-	err := c.BindJSON(in)
+	err := s.BindJSON(in)
 	if err != nil {
-		error := apiErr.NewApiError(http.StatusBadRequest, err.Error())
-		a.GinOutputErr(c, error)
+		error := apiErr.New(http.StatusBadRequest, err.Error())
+		a.GinApiErrorHandler(s, error)
 		return
 	}
-	logger := log.GetLogByGin(c)
-	pgxClient := db.GetPgxClientByGin(c)
-	queries := todoItem.New(pgxClient.AcquireConnection(c))
-	saveLog := fmt.Sprintf("[%s] Save System Info to DB\n",time.Now().Format("2006-01-02 15:04:05"))
-	logger.Info(saveLog)
-	err = queries.InsertTodoItem(c,todoItem.InsertTodoItemParams{
+	cfg,ok := cfg.GetFromGinCtx[*model.Config](s)
+	if !ok {
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+	conn,err := cfg.NewPgxConn(s)
+	if err != nil{
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+	defer conn.Close()
+	queries := todoItem.New(conn.GetPgxConn())
+	err = queries.InsertTodoItem(s,todoItem.InsertTodoItemParams{
 		Title: in.Title,
 		Detail: pgtype.Text{
 			String: in.Detail,
@@ -89,11 +95,11 @@ func(a *TodoItemAPI) postEndpoint(c *gin.Context) {
 		},
 	})
 	if err != nil {
-		a.GinOutputErr(c, err)
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, err.Error()))
 		return
 	}
 	fmt.Println("save ok")
-	c.JSON(http.StatusOK, map[string]any{
+	s.JSON(http.StatusOK, map[string]any{
 		"result": "ok",
 	})
 }

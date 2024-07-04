@@ -1,70 +1,132 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/joho/godotenv"
-
-	"github.com/wayne011872/goSterna/api/mid"
-	"github.com/wayne011872/goSterna/db"
-	"github.com/wayne011872/goSterna/storage"
-	sternaLog "github.com/wayne011872/goSterna/log"
-	"github.com/wayne011872/goSterna/api"
+	api "github.com/wayne011872/api-toolkit"
+	"github.com/wayne011872/api-toolkit/mid"
+	"github.com/wayne011872/goSterna/util"
+	"github.com/wayne011872/log"
+	"github.com/wayne011872/microservice"
+	"github.com/wayne011872/microservice/di"
 	myapi "github.com/wayne011872/myTodoBackend/api"
+	"github.com/wayne011872/myTodoBackend/model"
+	"github.com/wayne011872/pgx/conn"
+	"github.com/wayne011872/wayneLib"
+	authMid "github.com/wayne011872/wayneLib/auth/mid"
 )
 
 var (
-	service = flag.String("s","api","service(api)")
-	envMode = flag.String("em", "local", "local, container")
+	service = flag.String("service", "cli", "service (api, cli)")
+	v       = flag.Bool("v", false, "version")
+
+	Version   = "1.0.0"
+	BuildTime = "2000-01-01T00:00:00+0800"
 )
+
 func main() {
 	flag.Parse()
-	if *envMode == "local" {
-		err := godotenv.Load(".env")
-		if err != nil {
-			fmt.Println("No .env file")
-		}
+
+	if *v {
+		fmt.Println("Version: " + Version)
+		fmt.Println("Build Time: " + BuildTime)
+		return
 	}
+
+	path, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	envFile := path + "/.env"
+	if util.FileExists(envFile) {
+		godotenv.Load(envFile)
+	}
+	modelCfg, err := model.GetConfigFromEnv()
+	if err != nil {
+		panic(err)
+	}
+	ms, err := microservice.New(modelCfg, &mydi{})
+	if err != nil {
+		panic(err)
+	}
+
+	serv := &myservice{ms}
 	switch *service {
-	case "api":
-		runAPI()
+	case "cli":
+		serv.runCli()
 	default:
-		panic("invalid service")
+		microservice.RunService(
+			serv.runApi,
+		)
 	}
 }
 
-func runAPI() {
-	port := os.Getenv("API_PORT")
-	ginMode := os.Getenv(("GIN_MODE"))
-	serviceName := os.Getenv(("SERVICE"))
-	confPath := os.Getenv("CONF_PATH")
-	di := &di{}
-	log.Println("run api port: ", port)
-	log.Fatal(api.NewGinApiServer(ginMode).Middles(
-		mid.NewGinDevDiMid(storage.NewHdStorage(confPath), di, serviceName),
-		mid.NewGinPgxMid(serviceName),
-	).AddAPIs(
-		myapi.NewTodoItemAPI(serviceName),
-	).Run(port).Error())
+func (serv *myservice) runApi(ctx context.Context) {
+	cfg, err := api.GetConfigFromEnv()
+	if err != nil {
+		panic(err)
+	}
+	if !cfg.IsMockAuth {
+		authAddress := os.Getenv("GRPC_Auth_Address")
+		if authAddress == "" {
+			panic("missing auth address")
+		}
+		cfg.SetAuth(authMid.NewGinInterAuthMid(authAddress))
+	}
+	cfg.SetMiddles(
+		mid.NewGinMiddle(di.GinMiddleHandler(serv.GetDI())),
+		serv.GetModelCfgMgr())
+	cfg.AddProms(conn.PgxOpsQueued)
+	cfg.SetServerErrorHandler(wayneLib.ServerErrorHandler)
+	cfg.SetAPIs(
+		myapi.NewTodoItemAPI(),
+	)
+	log, err := serv.NewLog("api")
+	if err != nil {
+		panic(err)
+	}
+	cfg.Logger = log
+	err = api.AutoGinApiRun(ctx, cfg)
+	if err != nil {
+		cfg.Logger.Fatalf("api run fail: %v", err)
+	}
 }
 
-
-type di struct {
-	*db.PgxConf         	`yaml:"postgres,omitempty"`
-	*sternaLog.LoggerConf 	`yaml:"log,omitempty"`
+type myservice struct {
+	microservice.MicroService[*model.Config, *mydi]
 }
 
-func (d *di) IsEmpty() bool {
+func (serv *myservice) runCli() {
+	cfg, err := serv.NewCfg("cli")
+	if err != nil {
+		panic(err)
+	}
+	defer cfg.Close()
+
+	if err != nil {
+		panic(err)
+	}
+}
+
+type mydi struct {
+	di.CommonServiceDI
+	*conn.PgxConf   `yaml:"postgres,omitempty"`
+	*log.LoggerConf `yaml:"log,omitempty"`
+}
+
+func (d *mydi) IsConfEmpty() error {
 	if d.PgxConf == nil {
-		return true
+		return errors.New("postgres config is empty")
 	}
 
 	if d.LoggerConf == nil {
-		return true
+		return errors.New("logger config is empty")
 	}
 
-	return false
+	return nil
 }
