@@ -25,3 +25,6 @@ SET
     updatedTime = $7
 WHERE
     id = $8;
+
+-- name: DeleteTodoItem :exec
+DELETE FROM todoItem WHERE id = $1;

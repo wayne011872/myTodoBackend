@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,8 @@ func (a *TodoItemAPI) GetAPIs() []*apitool.GinApiHandler {
 	return [] *apitool.GinApiHandler{
 		{Path: "/v1/todoItem",Handler: a.getEndpoint,Method: "GET", Auth: true, Group: []auth.ApiPerm{perm.Admin, perm.Editor}},
 		{Path: "/v1/todoItem",Handler: a.postEndpoint,Method: "POST", Auth: true, Group: []auth.ApiPerm{perm.Admin, perm.Editor}},
+		{Path: "/v1/todoItem/:id",Handler: a.deleteEndpoint,Method: "DELETE", Auth: true, Group: []auth.ApiPerm{perm.Admin, perm.Editor}},
+		{Path: "/v1/todoItem/:id",Handler: a.putEndpoint,Method: "PUT", Auth: true, Group: []auth.ApiPerm{perm.Admin, perm.Editor}},
 	}
 }
 
@@ -99,6 +102,89 @@ func(a *TodoItemAPI) postEndpoint(s *gin.Context) {
 		return
 	}
 	fmt.Println("save ok")
+	s.JSON(http.StatusOK, map[string]any{
+		"result": in,
+	})
+}
+
+func (a *TodoItemAPI) putEndpoint(s *gin.Context) {
+	inputID := s.Param("ID") // 取得前端傳來的ID參數
+	in := &input.TodoItemInput{}
+	err := s.BindJSON(in)
+	if err != nil {
+		error := apiErr.New(http.StatusBadRequest, err.Error())
+		a.GinApiErrorHandler(s, error)
+		return
+	}
+	in.ID, err = strconv.ParseInt(inputID, 10, 64)
+	if err != nil {
+		error := apiErr.New(http.StatusBadRequest, err.Error())
+		a.GinApiErrorHandler(s, error)
+		return
+	}
+	cfg,ok := cfg.GetFromGinCtx[*model.Config](s)
+	if !ok {
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+	conn,err := cfg.NewPgxConn(s)
+	if err != nil{
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+
+	defer conn.Close()
+	queries := todoItem.New(conn.GetPgxConn())
+	queries.UpdateTodoItem(s,todoItem.UpdateTodoItemParams{
+		ID: in.ID,
+		Title: in.Title,
+		Detail: pgtype.Text{
+			String: in.Detail,
+			Valid:  in.Detail != "",
+		},
+		Completed: in.Completed,
+		Starttime: pgtype.Timestamp{
+			Time: time.Now(),
+			Valid: true,
+		},
+		Endtime: pgtype.Timestamp{
+			Time: time.Now().Add(time.Hour * 24),
+			Valid: true,
+		},
+	})
+	if err != nil {
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, err.Error()))
+		return
+	}
+	fmt.Println("update ok")
+	s.JSON(http.StatusOK, map[string]any{
+		"result": "ok",
+	})
+}
+
+func (a *TodoItemAPI) deleteEndpoint(s *gin.Context) {
+	inputID := s.Param("ID") // 取得前端傳來的ID參數
+	delId, err := strconv.ParseInt(inputID, 10, 64)
+	if err != nil {
+		error := apiErr.New(http.StatusBadRequest, err.Error())
+		a.GinApiErrorHandler(s, error)
+		return
+	}
+	cfg,ok := cfg.GetFromGinCtx[*model.Config](s)
+	if !ok {
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+	conn,err := cfg.NewPgxConn(s)
+	if err != nil{
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, "get config failed"))
+	}
+
+	defer conn.Close()
+	queries := todoItem.New(conn.GetPgxConn())
+	queries.DeleteTodoItem(s,delId)
+	if err != nil {
+		a.GinApiErrorHandler(s, apiErr.New(http.StatusBadRequest, err.Error()))
+		return
+	}
+	fmt.Println("delete ok")
 	s.JSON(http.StatusOK, map[string]any{
 		"result": "ok",
 	})

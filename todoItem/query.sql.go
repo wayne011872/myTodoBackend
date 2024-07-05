@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteTodoItem = `-- name: DeleteTodoItem :exec
+DELETE FROM todoItem WHERE id = $1
+`
+
+func (q *Queries) DeleteTodoItem(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteTodoItem, id)
+	return err
+}
+
 const getAllTodoItem = `-- name: GetAllTodoItem :many
 SELECT id, title, detail, completed, starttime, endtime, createdtime, updatedtime FROM todoItem ORDER BY title
 `
